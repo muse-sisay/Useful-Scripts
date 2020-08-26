@@ -26,14 +26,14 @@ BOOT_MESSAGE="gmou-pc is Powered on and Online."
 POWERED_ON=1
 
 
-func sendMessage(){
+func sendMessage ( ) {
 
 	#stop previous session of tmate
-	tmate -S /tmp/tmate.sock kill-session
+	tmate -S /tmp/tmate.sock kill-sessioni 2> /dev/null
 		
 	#start a new tmate session
-	tmate -S /tmp/tmate.sock new-session -d
-	tmate -S /tmp/tmate.sock wait tmate-ready
+	tmate -S /tmp/tmate.sock new-session -d 2> /dev/null
+	tmate -S /tmp/tmate.sock wait tmate-ready 2> /dev/null
 		
 	#extract the session id
 	SESSION_ID=$(tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}')
@@ -45,7 +45,7 @@ func sendMessage(){
 	- IPV4 $LOCAL_IPV4"
 
 	#email the session id - changed to telegram
-	curl -s -X POST $URL -d chat_id=$CHAT_ID -d text="$MESSAGE"
+	curl -s -X POST $URL -d chat_id=$CHAT_ID -d text="$MESSAGE" 2> /dev/null
     
 }
 
