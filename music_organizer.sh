@@ -1,44 +1,130 @@
 #!/bin/bash
 
-DIR=$1
-cd $DIR
+# USAGE
+#   $ tidal-organizer SEARCH_DIR OUTPUT_DIR
 
-for song in *.m4a *.mp3 *.FLAC
-do
-	# There are no songs in this directory
-	if [[ "$?" -ne 0 ]]
-	then
-		continue
-	fi
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+NC='\033[0m'
 
-	# Extract metadata
-	#exiftool "$MUSIC"
-	metadata=$(exiftool -Artist -Album  -j "$song" | jq ".[]" )
+if [[ "$1" == "" ]] 
+then 
+    echo "Error : Missing SEARCH DIR"
+    exit 1
+fi
 
-	ARTIST=$( echo "$metadata" | jq -r  ".Artist" )
-	ALBUM=$( echo "$metadata" | jq -r ".Album" )
-	SONG_TITLE=$( echo "$metadata" | jq -r ".SourceFile" )
+SEARCH_DIR=$1
 
-	# ALBUM is empty
-	if [[ -z "$ALBUM" ]]
-	then
-		ALBUM="UNKNOWN"
-	fi
+if [[ "$2" != "" ]]
+then
+    OUTPUT_DIR="$2"  
+else 
+    OUTPUT_DIR="$(pwd)"
+fi
 
-	# check for artist and song title
+echo -e "${GREEN}LOOKING SONGS IN :${NC} $SEARCH_DIR" # DEBUG OUTPUT
+echo -e "${GREEN}OUTPUT TO :${NC} $OUTPUT_DIR" # DEBUG OUTPUT
+echo 
 
-	if [[ ! -d "${ARTIST}/${ALBUM}" ]]
-	then
-		mkdir -p "${ARTIST}/${ALBUM}"
-	fi
+cd "$SEARCH_DIR"
 
-	if [[ ! -e "${ARTIST}/${ALBUM}/${SONG_TITLE}" ]]
-	then
-		echo "Moving $SONG_TITLE to ${ARTIST}/${ALBUM}"
-		mv "$SONG_TITLE"  "${ARTIST}/${ALBUM}/"
-	else 
-		echo "Skipping $SONG_TITLE, already exists."
-	fi 
-done
 
-echo ">> ALL DONE"
+shopt -s nullglob
+# for song in *.flac *.m4a
+find . -not -path '*/\.*'  -type f -a \( -name '*.flac' -o -name "*.mp3" \) | while read song
+do 
+    IS_UNKOWN=0
+    echo "> $song"
+
+	metadata=$(exiftool -Albumartist -Artist -Album  -Title -TrackNumber -FileTypeExtension -j "$song" | jq ".[]" )
+
+    # echo "$metadata" # DEBUG OUTPUT
+
+    FILE=$( echo "$metadata" | jq -r ".SourceFile" )
+
+    # extract ARTIST field
+    if [[ $( echo "$metadata" | jq -r ".Albumartist" ) != "null" ]]
+    then 
+        ARTIST=$( echo "$metadata" | jq -r  ".Albumartist" )
+    else 
+
+        if [[ $( echo "$metadata" | jq -r  ".Artist | type") == "array" ]]
+        then 
+        ARTIST=$( echo "$metadata" | jq -r  ".Artist[0]" )
+        
+        elif [[ $(echo "$metadata" | jq -r  ".Artist | type") == "string" ]]
+        then
+            ARTIST=$( echo "$metadata" | jq -r  ".Artist" )
+        else 
+            # file contains no artist field
+            ARTIST="unkown"
+            IS_UNKOWN=1
+        fi
+
+    fi
+
+    # extract ALBUM field
+    if [[ $( echo "$metadata" | jq -r ".Album" ) != "null" ]]
+    then
+        ALBUM=$( echo "$metadata" | jq -r ".Album" )
+    else 
+        # file contains no artist field
+        ALBUM="unknown" 
+        IS_UNKOWN=1
+    fi
+
+     # extract TITLE field
+    if [[ $( echo "$metadata" | jq -r ".Title" ) != "null" ]]
+    then
+        TRACK_NUMBER=$( echo "$metadata" | jq -r ".TrackNumber" )
+        SONG_TITLE=$( echo "$metadata" | jq -r ".Title" )
+        FILE_TYPE=$( echo "$metadata" | jq -r ".FileTypeExtension" )
+        
+        SONG_TITLE="${TRACK_NUMBER} - ${ARTIST} - ${SONG_TITLE}.${FILE_TYPE}"
+   
+    else 
+       SONG_TITLE=$(basename "$( echo "$metadata" | jq -r ".SourceFile" )")
+    fi
+    
+    # SANITIZE FILE NAME
+    ALBUM=${ALBUM//[^a-zA-Z0-9 \._\-]/-}
+    SONG_TITLE=${SONG_TITLE//[^a-zA-Z0-9 \._\-]/-}
+
+    # echo -e "${GREEN}$ARTIST" # DEBUG OUTPUT
+    # echo $ALBUM # DEBUG OUTPUT
+    # echo $SONG_TITLE # DEBUG OUTPUT
+    # echo -e "$NC" # DEBUG OUTPUT
+
+    
+    if [[ $IS_UNKOWN -eq 0 ]]
+    then
+
+        if [[ ! -d "${OUTPUT_DIR}/${ARTIST}/${ALBUM}" ]]
+        then 
+            mkdir -p "${OUTPUT_DIR}/${ARTIST}/${ALBUM}"
+        fi
+
+        if [[ ! -e "${OUTPUT_DIR}/${ARTIST}/${ALBUM}/${SONG_TITLE}" ]]
+        then 
+            echo -e "Moving $GREEN $SONG_TITLE $NC to $GREEN ${ARTIST}/${ALBUM} $NC \n"
+            mv "$FILE"  "${OUTPUT_DIR}/${ARTIST}/${ALBUM}/${SONG_TITLE}"
+            
+        else 
+            echo -e "${RED}Skipping${NC} $SONG_TITLE ${RED}already exists in${NC} ${OUTPUT_DIR}/${ARTIST}/${ALBUM}/ \n"
+        fi
+    else 
+        if [[ ! -d "${OUTPUT_DIR}/unkown" ]]
+        then 
+            mkdir -p "${OUTPUT_DIR}/unkown"
+        fi
+
+        if [[ ! -e "${OUTPUT_DIR}/unkown/${SONG_TITLE}" ]]
+        then 
+            echo -e "Moving $GREEN $SONG_TITLE $NC to $RED unknown/ $NC \n"
+            mv "$FILE"  "${OUTPUT_DIR}/unkown/${SONG_TITLE}"
+        else 
+            echo -e "${RED}Skipping${NC} $SONG_TITLE ${RED} already exists in${NC} ${OUTPUT_DIR}/unkown/ \n"
+        fi
+    fi
+
+done    
